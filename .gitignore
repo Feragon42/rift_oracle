@@ -1,6 +1,50 @@
-# Ignore the local virtual environment
+# Python virtual environments
 .venv/
 venv/
+env/
 
-# Ignore dataset files
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.pyo
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE and editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Data files and large local assets
 datasets/
+*.csv
+*.parquet
+*.feather
+*.h5
+*.sqlite
+*.db
+
+# Optional: keep this file if needed for folder structure
+!datasets/.gitkeep
