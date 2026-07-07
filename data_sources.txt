@@ -1,0 +1,6 @@
+https://oracleselixir.com/tools/downloads
+eSport Leagues matches datasets in csv. Daily update.
+
+https://developer.riotgames.com
+Official API from riotgames. It have patch info (last version, don't know if they have the history). Champions info. Not pretty sure about match info.
+

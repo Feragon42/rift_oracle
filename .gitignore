@@ -1,0 +1,6 @@
+# Ignore the local virtual environment
+.venv/
+venv/
+
+# Ignore dataset files
+datasets/
