@@ -23,22 +23,21 @@ The initial data sources for this project are:
 
 ## Engineering Journal:
 ### First Entry (2026-07-07)
+
 *TL;DR:*
+
 Findings:
----------
 - Oracle's Elixir provides one of the cleanest competitive datasets available.
 - Riot API is rich but rate-limited.
 - Data Dragon contains versioned champion data.
 - Patch notes are the biggest challenge.
 
-Decisions
-----------
+Decisions:
 - Oracle's Elixir will become the primary competitive dataset.
 - Riot API will initially focus on Challenger Solo Queue.
 - Champion changes will be simplified into Buff / Nerf labels.
 
-Open Questions
---------------
+Open Questions:
 - How should patch notes be parsed?
 - Should I ignore item, map and system changes in the first version?
 - Is Challenger Solo Queue representative enough?
