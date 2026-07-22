@@ -116,7 +116,7 @@ def save_summoners_dataset(summoners_data, filename: str):
     df = pd.DataFrame(summoners_data)
     df.to_json(f'{DATASETS_DIR}/{filename}', orient='records', lines=True)
 
-def get_summoners_data(news_only: bool = False):
+def get_summoners_data(news_only: bool = False): ##TODO Check Metadata for the last time a division was processed, to download freshBlood every month
     processed_logs = []
     for division in valid_divisions:
         valid_tiers_for_division = valid_tiers if division not in ['MASTER', 'GRANDMASTER', 'CHALLENGER'] else ['I']
@@ -147,7 +147,7 @@ def get_summoners_data(news_only: bool = False):
     pd.DataFrame(processed_logs).to_csv(f'{DATASETS_DIR}/{time.strftime("%Y-%m-%d", time.gmtime())}_summoners_data_processing_log.csv', index=False)
     return processed_logs
 
-def create_summoners_puuid_list(division: str | None = None, tier: str | None = None, date: str | None = None):
+def create_summoners_puuid_list(division: str | None = None, tier: str | None = None, date: str | None = None): ##TODO Look for the date in the metadata of the last time a division was requested
     if not date:
         date = max([f.stem.split('_')[0] for f in Path(DATASETS_DIR).glob(f'*_summoners_*.json')])
         if not date:
