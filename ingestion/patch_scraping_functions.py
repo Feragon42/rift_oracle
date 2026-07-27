@@ -12,11 +12,19 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from metadata import metadata
 import os
+from dotenv import load_dotenv
 from pathlib import Path
+from google import genai
+import base64
+import json
+
+load_dotenv()  # Load environment variables from .env file
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATASETS_DIR = PROJECT_ROOT / 'datasets' / 'bronze' / 'patches'
 IMAGES_DIR = PROJECT_ROOT / 'datasets' / 'bronze' / 'patches' / 'patch_highlight_images'
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 def _parse_patch_number(title_text: str) -> str:
     match = re.search(r"Patch\s+([0-9]+(?:\.[0-9]+)?)", title_text, re.IGNORECASE)
@@ -96,18 +104,18 @@ def _guess_extension(image_url: str | None, content_type: str | None) -> str:
     if content_type:
         content_type = content_type.lower()
         if "png" in content_type:
-            return ".png"
+            return "png"
         if "jpeg" in content_type or "jpg" in content_type:
-            return ".jpg"
+            return "jpg"
 
     if image_url:
         path = urlparse(image_url).path.lower()
         if path.endswith(".png"):
-            return ".png"
+            return "png"
         if path.endswith(".jpg") or path.endswith(".jpeg"):
-            return ".jpg"
+            return "jpg"
 
-    return ".jpg"
+    return "jpg"
 
 
 def _extract_highlight_urls_from_skins_anchor(page_html: str) -> list[str]:
@@ -160,7 +168,7 @@ def save_image(content: bytes, content_type: str, output_dir: Path, filename: st
         print(f"Failed to download")
         return False
 
-def download_patch_highlight_image(patch_url: str, patch_version: str, timeout: int = 20) -> bool:
+def download_patch_highlight_image(patch_url: str, patch_version: str, timeout: int = 20) -> str:
     output_dir = IMAGES_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -184,11 +192,86 @@ def download_patch_highlight_image(patch_url: str, patch_version: str, timeout: 
                 filename = f"{patch_version}_patch_highlights.{extension}"
                 r = save_image(image_response.content, content_type, output_dir, filename)
                 if r:
-                    return True
+                    return filename
         except requests.RequestException:
             continue
 
-    return False
+    return None
+
+def get_gemini_patch_image_analysis(filename: str, patch_version: str) -> list[dict]:
+    if not GEMINI_API_KEY:
+        raise ValueError("Set GEMINI_API_KEY in your environment before running this cell.")
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    image_bytes = (IMAGES_DIR / filename).read_bytes()
+    if not image_bytes:
+        print(f"Image file {filename} is empty or not found.")
+        return {}
+
+    interaction = client.interactions.create(
+        model="gemini-3.5-flash",
+        input=[
+            {
+                "type": "text",
+                "text": (
+                    "Analyze this League of Legends patch highlight image. "
+                    "Return ONLY valid JSON in this exact format: "
+                    "{\"changes\": [{\"champion\": \"...\", \"change_type\": \"Buff|Nerf\", \"patch_number\": \"...\"}]} "
+                    f"Use patch_number = '{patch_version}'. "
+                    "If no champion buffs/nerfs are visible, return {\"changes\": []}."
+                ),
+            },
+            {
+                "type": "image",
+                "data": base64.b64encode(image_bytes).decode("utf-8"),
+                "mime_type": "image/png" if filename.lower().endswith(".png") else "image/jpeg",
+            },
+        ],
+    )
+
+    raw_text = interaction.output_text.strip()
+
+    # Handle occasional fenced JSON responses.
+    if raw_text.startswith("```"):
+        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.IGNORECASE)
+        raw_text = re.sub(r"\s*```$", "", raw_text)
+
+    payload = json.loads(raw_text)
+    changes = payload.get("changes", [])
+
+    
+
+    return changes
+
+def save_patch_changes_to_csv(changes: list[dict], patch_version: str) -> bool:
+    if not changes:
+        raise ValueError("No changes to save. The 'changes' list is empty.")
+        return False
+
+    output_file = DATASETS_DIR / f"patch_highlights_champion_changes_{patch_version}.csv"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    df_records = []
+
+    for change in changes:
+        champion = str(change.get("champion", "")).strip()
+        change_type = str(change.get("change_type", "")).strip().title()
+        patch_num = str(change.get("patch_number", patch_version)).strip() or patch_version
+
+        if champion and change_type in {"Buff", "Nerf"}:
+            df_records.append(
+                {
+                    "Champion": champion,
+                    "Change Type": change_type,
+                    "Patch Number": patch_num
+                }
+            )
+
+    df = pd.DataFrame(df_records)
+    df.to_csv(output_file, index=False)
+
+    return True
 
 def get_new_patch_notes():
     try:
@@ -225,9 +308,16 @@ def get_new_patch_notes():
     combined_df.to_csv(scraped_patch_file, index=False)
 
     for patch_version in sorted(new_patches_df["patch_number"].astype(str).unique(), key=_patch_version_key):
-        r = download_patch_highlight_image(patch_url=new_patches_df.loc[new_patches_df["patch_number"] == patch_version, "patch_url"].values[0], patch_version=patch_version)
-        if r:
-            ##GET PATCH INFO WITH GEMINI AND SAVE RESULT
-            metadata.log_patch_notes_request(patch_version)
+        print(f"Processing patch version: {patch_version}")
+        filename = download_patch_highlight_image(patch_url=new_patches_df.loc[new_patches_df["patch_number"] == patch_version, "patch_url"].values[0], patch_version=patch_version)
+        if filename:
+            print(f"Downloaded image for patch {patch_version}: {filename}")
+            patch_changes = get_gemini_patch_image_analysis(filename=filename, patch_version=patch_version)
+            if patch_changes:
+                print(f"Extracted changes for patch {patch_version}: {patch_changes}")
+                r = save_patch_changes_to_csv(patch_changes, patch_version)
+                if r:
+                    print(f"Saved changes to CSV for patch {patch_version}")
+                    metadata.log_patch_notes_request(patch_version)
 
     return len(new_patches_df)
