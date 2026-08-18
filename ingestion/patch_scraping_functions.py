@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -44,11 +45,17 @@ def scrape_patch_notes():
     url = "https://www.leagueoflegends.com/en-us/news/tags/patch-notes/"
 
     chrome_options = Options()
+    chrome_options.binary_location = "/usr/bin/chromium"
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
 
-    driver = webdriver.Chrome(options=chrome_options)
+    driver = webdriver.Chrome(
+        service=Service("/usr/bin/chromedriver"),
+        options=chrome_options,
+    )
     wait = WebDriverWait(driver, 10)
     html = ""
     patch_rows = []
@@ -289,7 +296,7 @@ def get_new_patch_notes():
     new_rows = []
     for _, row in patches_df.iterrows():
         patch_version = str(row["patch_number"]).strip()
-        if _patch_version_key(patch_version) > last_patch_version:
+        if _patch_version_key(patch_version) > last_patch_version and _patch_version_key(patch_version) != 2025: ##To ignore the format problem of Riot
             new_rows.append(row)
 
     if not new_rows:
@@ -319,5 +326,15 @@ def get_new_patch_notes():
                 if r:
                     print(f"Saved changes to CSV for patch {patch_version}")
                     metadata.log_patch_notes_request(patch_version)
+                    print(f"Logged patch notes request for patch {patch_version}")
+                else:
+                    print(f"Failed to save changes to CSV for patch {patch_version}")
+                    return False
+            else:
+                print(f"No changes extracted for patch {patch_version}")
+                return False
+        else:
+            print(f"Failed to download image for patch {patch_version}")
+            return False
 
-    return len(new_patches_df)
+    return True

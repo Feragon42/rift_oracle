@@ -1,0 +1,28 @@
+services:
+  airflow:
+    build: .
+    container_name: rift_oracle_airflow
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./datasets:/opt/airflow/datasets
+      - ./metadata:/opt/airflow/metadata
+      - ./metadata/pipelines.db:/opt/airflow/metadata/pipelines.db
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      PYTHONPATH: /opt/airflow
+    command: >
+      bash -lc '
+      airflow users list | grep -q "^admin" || \
+      airflow users create \
+        --username admin \
+        --firstname Admin \
+        --lastname User \
+        --role Admin \
+        --email admin@example.com \
+        --password "$${AIRFLOW_PASSWORD}";
+      exec airflow standalone
+      '

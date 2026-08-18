@@ -38,6 +38,23 @@ desktop.ini
 # Logs
 *.log
 
+# Docker / local runtime artifacts
+.docker/
+.dockerignore
+docker-compose.override.yml
+*.tar
+
+# Airflow runtime files
+logs/
+airflow-webserver.pid
+airflow-scheduler.pid
+airflow-worker.pid
+airflow-flower.pid
+airflow.db
+unittests.cfg
+simple_auth_manager_passwords.json.generated
+airflow_local_settings.py
+
 # Data files and large local assets
 datasets/
 *.csv
