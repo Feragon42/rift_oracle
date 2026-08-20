@@ -27,9 +27,21 @@ IMAGES_DIR = PROJECT_ROOT / 'datasets' / 'bronze' / 'patches' / 'patch_highlight
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+def _normalize_patch_version(version: str | float | int) -> str:
+    text = str(version).strip()
+    text = re.sub(r"^\s*Patch\s+", "", text, flags=re.IGNORECASE)
+    match = re.fullmatch(r"(\d+)(?:\.(\d+))?", text)
+    if not match:
+        return text
+
+    major = match.group(1)
+    minor = match.group(2) or "0"
+    return f"{major}.{minor}"
+
+
 def _parse_patch_number(title_text: str) -> str:
     match = re.search(r"Patch\s+([0-9]+(?:\.[0-9]+)?)", title_text, re.IGNORECASE)
-    return match.group(1) if match else title_text.strip()
+    return _normalize_patch_version(match.group(1)) if match else _normalize_patch_version(title_text.strip())
 
 def _patch_version_key(version: str) -> tuple[int, int]:
     match = re.fullmatch(r"(\d+)(?:\.(\d+))?", str(version).strip())
@@ -98,6 +110,8 @@ def scrape_patch_notes():
         .drop_duplicates(subset=["patch_url"])
         .reset_index(drop=True)
     )
+    if not patches_df.empty:
+        patches_df["patch_number"] = patches_df["patch_number"].map(_normalize_patch_version).astype(str)
 
     return patches_df
 
@@ -303,11 +317,14 @@ def get_new_patch_notes():
         return 0
 
     new_patches_df = pd.DataFrame(new_rows)
+    if not new_patches_df.empty:
+        new_patches_df["patch_number"] = new_patches_df["patch_number"].map(_normalize_patch_version).astype(str)
 
     scraped_patch_file.parent.mkdir(parents=True, exist_ok=True)
     if scraped_patch_file.exists():
-        existing_df = pd.read_csv(scraped_patch_file)
+        existing_df = pd.read_csv(scraped_patch_file, dtype={"patch_number": "string"})
         combined_df = pd.concat([existing_df, new_patches_df], ignore_index=True)
+        combined_df["patch_number"] = combined_df["patch_number"].map(_normalize_patch_version).astype(str)
         combined_df = combined_df.drop_duplicates(subset=["patch_url"], keep="last")
     else:
         combined_df = new_patches_df
