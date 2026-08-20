@@ -4,6 +4,8 @@ services:
     container_name: rift_oracle_airflow
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     volumes:
       - ./datasets:/opt/airflow/datasets
       - ./metadata:/opt/airflow/metadata
@@ -14,6 +16,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       PYTHONPATH: /opt/airflow
+      AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD}
     command: >
       bash -lc '
       airflow users list | grep -q "^admin" || \
