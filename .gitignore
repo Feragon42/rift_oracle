@@ -3,6 +3,7 @@
 venv/
 env/
 .env
+.env.*
 
 # Python cache and build artifacts
 __pycache__/
@@ -44,7 +45,7 @@ desktop.ini
 docker-compose.override.yml
 *.tar
 
-# Airflow runtime files
+# Airflow runtime files and secrets
 logs/
 airflow-webserver.pid
 airflow-scheduler.pid
@@ -54,6 +55,9 @@ airflow.db
 unittests.cfg
 simple_auth_manager_passwords.json.generated
 airflow_local_settings.py
+**/airflow.cfg
+**/airflow*.cfg
+**/*.json.generated
 
 # Data files and large local assets
 datasets/
