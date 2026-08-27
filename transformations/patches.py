@@ -1,17 +1,12 @@
 import pandas as pd
 import os
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SILVER_DATASETS_DIR = PROJECT_ROOT / 'datasets' / 'silver'
-BRONZE_DATASETS_DIR = PROJECT_ROOT / 'datasets' / 'bronze'
+from transformations.utils import PATCHES_DIMENSION_FILE, CHAMPIONS_CHANGES_DIMENSION_FILE, SILVER_DATASETS_DIR, BRONZE_DATASETS_DIR
 
 def upload_patches_dimension(rewrite=False):
     patches_desc_df = pd.read_csv(BRONZE_DATASETS_DIR / 'patches/scraped_patch_notes.csv')
-    patches_dimension_dir = SILVER_DATASETS_DIR / 'patches_dimension.parquet'
 
-    if os.path.exists(patches_dimension_dir) and rewrite == False:
-        patches_dimension = pd.read_parquet(patches_dimension_dir, engine='pyarrow')
+    if os.path.exists(PATCHES_DIMENSION_FILE) and rewrite == False:
+        patches_dimension = pd.read_parquet(PATCHES_DIMENSION_FILE, engine='pyarrow')
     else:
         patches_dimension = pd.DataFrame(columns=['patch_number', 'patch_start_date', 'patch_end_date', 'patch_url'])
 
@@ -43,7 +38,7 @@ def upload_patches_dimension(rewrite=False):
 
     #Save the patches dimension DataFrame to a Parquet file
     try:
-        patches_dimension.to_parquet(patches_dimension_dir, engine='pyarrow', index=False)
+        patches_dimension.to_parquet(PATCHES_DIMENSION_FILE, engine='pyarrow', index=False)
     except Exception as e:
         raise ValueError(f"Failed to write the patches dimension DataFrame to Parquet format. Please check the data and try again. Error: {e}")
 
@@ -52,18 +47,18 @@ def upload_patches_dimension(rewrite=False):
 def upload_champions_changes_dimension(rewrite=False):
 
     #Load the patches dimension DataFrame
-    if not os.path.exists(SILVER_DATASETS_DIR/'patches_dimension.parquet'):
+    if not os.path.exists(PATCHES_DIMENSION_FILE):
         raise ValueError("The patches_dimension.parquet file does not exist. Please check the data source.")
     else:
-        patches = pd.read_parquet(SILVER_DATASETS_DIR/'patches_dimension.parquet', engine='pyarrow')
+        patches = pd.read_parquet(PATCHES_DIMENSION_FILE, engine='pyarrow')
         if patches.empty:
             raise ValueError("The patches_dimension.parquet file is empty. Please check the data source.")
 
     #Load existing champions changes dimension DataFrame or create a new one if it doesn't exist (if rewrite is true, it will create a new one nonetheless)
-    if not os.path.exists(SILVER_DATASETS_DIR / 'champions_changes_dimension.parquet') and rewrite == False:
+    if not os.path.exists(CHAMPIONS_CHANGES_DIMENSION_FILE) and rewrite == False:
         champions_changes = pd.DataFrame(columns=['patch_number', 'champion_name', 'change_type'])
     else:
-        champions_changes = pd.read_parquet(SILVER_DATASETS_DIR/'champions_changes_dimension.parquet', engine='pyarrow')
+        champions_changes = pd.read_parquet(CHAMPIONS_CHANGES_DIMENSION_FILE, engine='pyarrow')
 
     not_existing_patch_files = pd.DataFrame(columns=['patch_number', 'processing_date'])
     for patch in patches.itertuples():
@@ -83,7 +78,7 @@ def upload_champions_changes_dimension(rewrite=False):
 
     #Save the champions_changes DataFrame to a Parquet file
     try:
-        champions_changes.to_parquet(SILVER_DATASETS_DIR / 'champions_changes_dimension.parquet', engine='pyarrow', index=False)
+        champions_changes.to_parquet(CHAMPIONS_CHANGES_DIMENSION_FILE, engine='pyarrow', index=False)
     except Exception as e:
         raise ValueError(f"Failed to write the champions changes dimension DataFrame to Parquet format. Please check the data and try again. Error: {e}")
 
@@ -93,3 +88,25 @@ def upload_champions_changes_dimension(rewrite=False):
         not_existing_patch_files.to_csv(SILVER_DATASETS_DIR / 'errors' / f'not_existing_patch_files_{pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")}.csv', index=False)
 
     return True
+
+
+def get_patch_dates(patch_number: int | None = None) -> tuple[pd.Timestamp, pd.Timestamp]:
+    if not os.path.exists(PATCHES_DIMENSION_FILE):
+        raise ValueError("The patches_dimension.parquet file does not exist. Please check the data source.")
+    else:
+        patches = pd.read_parquet(PATCHES_DIMENSION_FILE, engine='pyarrow')
+        if patches.empty:
+            raise ValueError("The patches_dimension.parquet file is empty. Please check the data source.")
+        else:
+            if patch_number is not None:
+                patch_row = patches[patches['patch_number'] == patch_number]
+                if patch_row.empty:
+                    raise ValueError(f"The patch number {patch_number} does not exist in the patches_dimension.parquet file.")
+                else:
+                    first_patch_date = patch_row['patch_start_date'].values[0]
+                    last_patch_date = patch_row['patch_end_date'].values[0]                
+            else:
+                first_patch_date = patches['patch_start_date'].min()
+                last_patch_date = patches['patch_end_date'].max()
+
+    return first_patch_date, last_patch_date

@@ -1,12 +1,16 @@
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+import pandas as pd
+
+sqlite3.register_adapter(datetime, lambda val: val.isoformat(timespec='seconds'))
+sqlite3.register_converter("DATETIME", lambda val: datetime.fromisoformat(val.decode("utf-8")) if val else None)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 METADATA_DIR = PROJECT_ROOT / 'metadata'
 
 
-conn = sqlite3.connect(METADATA_DIR / 'pipelines.db')
+conn = sqlite3.connect(METADATA_DIR / 'pipelines.db', detect_types=sqlite3.PARSE_DECLTYPES)
 cursor = conn.cursor()
 
 def create_summoners_handling_table():
@@ -128,3 +132,39 @@ def log_oracle_elixir_request(year, downloaded, error_message):
         VALUES (?, ?, ?, ?)
     ''', (year, request_time, downloaded, error_message))
     conn.commit()
+
+def create_last_match_handling_table():
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS last_match_handling (
+            type TEXT PRIMARY KEY,
+            last_match_date DATETIME
+        )
+    ''')
+    conn.commit()
+
+def update_last_match_date(type: str, last_match_date: datetime | pd.Timestamp) -> bool:
+    if isinstance(last_match_date, pd.Timestamp):
+        last_match_date = last_match_date.to_pydatetime()
+
+    try: 
+        cursor.execute('''
+            INSERT INTO last_match_handling (type, last_match_date)
+            VALUES (?, ?)
+            ON CONFLICT(type) DO UPDATE SET
+                last_match_date = excluded.last_match_date
+        ''', (type, last_match_date))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Failed to update last match date: {e}")
+        return False
+
+def get_last_match_date(type: str) -> datetime | None:
+    cursor.execute('SELECT last_match_date FROM last_match_handling WHERE type = ?', (type,))
+    result = cursor.fetchone()
+    if not result:
+        return None
+    value = result[0]
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return value
