@@ -49,7 +49,7 @@ def upload_oe_matches(rewrite=False) -> bool:
 
     return True
 
-def process_oe_ban_list(ban_list_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
+def process_oe_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
     #ban_list_columns = ['date', 'patch', 'gameid', 'side', 'ban1', 'ban2', 'ban3', 'ban4', 'ban5']
     ban_list_columns = ['date', 'patch', 'gameid', 'side', 'ban']
 
@@ -63,7 +63,7 @@ def process_oe_ban_list(ban_list_df: pd.DataFrame, rewrite=False) -> pd.DataFram
     ban_list_df = pd.concat(
         [
             ban_list_df,
-            ban_list_df.melt(
+            base_df.melt(
                 id_vars=['date', 'patch', 'gameid', 'side'],
                 value_vars=[f'ban{i+1}' for i in range(0,5)],
                 var_name='ban_number',
@@ -77,7 +77,7 @@ def process_oe_ban_list(ban_list_df: pd.DataFrame, rewrite=False) -> pd.DataFram
     )
     return ban_list_df
 
-def process_oe_match_summary(matches_summary_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
+def process_oe_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
     match_summary_columns = ['date','patch','side','position','playername','champion','gamelength','result','kills','deaths','assists',
                             'teamkills','teamdeaths','doublekills','triplekills','quadrakills','pentakills','damagetochampions',
                             'dpm','damageshare','damagetakenperminute','damagemitigatedperminute','damagetotowers','total cs',
@@ -93,7 +93,7 @@ def process_oe_match_summary(matches_summary_df: pd.DataFrame, rewrite=False) ->
         matches_summary_df = pd.DataFrame(columns=match_summary_columns)
 
     matches_summary_df = pd.concat([matches_summary_df, 
-                                    matches_summary_df.loc[:, match_summary_columns]
+                                    base_df.loc[:, match_summary_columns]
                                     .rename(columns={'total cs': 'total_cs'}).copy()
                                     .dropna(subset=['date','champion'])], 
                                     ignore_index=True)
@@ -109,7 +109,7 @@ def upload_soloq_matches(rewrite=False) -> bool:
     ##Get list of files to process. The files are named by the date when they were created.
     files_list = sorted([f for f in os.listdir(BRONZE_DATASETS_DIR / 'riot_api') 
                          if f.endswith('_match_info_results.json')
-                         and f.split('_')[0] >= last_processed_match_date.strftime('%Y-%m-%d')])
+                         and f.split('_')[0] >= (last_processed_match_date.strftime('%Y-%m-%d') if pd.notna(last_processed_match_date) else pd.Timestamp.min.strftime('%Y-%m-%d'))])
 
     for file in files_list:
         source_file_dir = BRONZE_DATASETS_DIR / 'riot_api' / file
@@ -146,7 +146,7 @@ def upload_soloq_matches(rewrite=False) -> bool:
 
 def process_soloq_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
     ban_source_columns = ['match_id','gameStartTimestamp','gameVersion','teams']
-    ban_list_columns = ['date', 'patch', 'match_id', 'side', 'ban']
+    ban_list_columns = ['date', 'patch', 'gameid', 'side', 'ban']
     champions_dimension = pd.read_parquet(CHAMPIONS_DIMENSION_FILE, engine='pyarrow')
 
     if champions_dimension.empty:
@@ -159,16 +159,30 @@ def process_soloq_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame
         ban_list_df = pd.DataFrame(columns=ban_list_columns)
 
     ban_base = (base_df.loc[:, ban_source_columns]
-                .explode('teams').reset_index(drop=True).assign(
+                .dropna(subset=['teams'])
+                .explode('teams')
+                .reset_index(drop=True)
+                .assign(
                     date=lambda x: pd.to_datetime(x['gameStartTimestamp'], unit='ms'),
-                    patch=lambda x: x['gameVersion'].map(lambda y: '.'.join(y.split('.')[:2])),
+                    patch=lambda x: x['gameVersion'].map(
+                        lambda y: '.'.join(str(y).split('.')[:2]) if isinstance(y, str) else None
+                    ),
                     gameid=lambda x: x['match_id'],
-                    side=lambda x: x['teams'].map(lambda y: 'Blue' if y['teamId'] == 100 else 'Red'),
-                    bans=lambda x: x['teams'].map(lambda y: [str(b['championId']) for b in y['bans']]),
-                ).drop(columns=['teams','gameStartTimestamp','gameVersion','match_id']))
+                    side=lambda x: x['teams'].map(
+                        lambda y: 'Blue' if isinstance(y, dict) and y.get('teamId') == 100 else 'Red' if isinstance(y, dict) else None
+                    ),
+                    bans=lambda x: x['teams'].map(
+                        lambda y: [str(b['championId']) for b in y.get('bans', [])] if isinstance(y, dict) else []
+                    ),
+                )
+                .drop(columns=['teams','gameStartTimestamp','gameVersion','match_id']))
 
-    unlist_bans = (ban_base['bans'].apply(lambda x: x if isinstance(x,list) else [])
-                    .apply(lambda x: pd.Series(x[:], index=[f'ban{i+1}' for i in range(0,5)])))
+    unlist_bans = (ban_base['bans']
+                    .apply(lambda x: x if isinstance(x, list) else [])
+                    .apply(lambda x: pd.Series(
+                        (x[:5] + [None] * max(0, 5 - len(x[:5]))),
+                        index=[f'ban{i+1}' for i in range(0,5)]
+                    )))
     ban_base = pd.concat([ban_base.drop(columns=['bans']), unlist_bans], axis=1)
     ban_melted = (
         ban_base.melt(
@@ -186,20 +200,20 @@ def process_soloq_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame
     return ban_list_df
 
 def process_soloq_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
-    champion_info_columns = ['championName', 'teamId', 'teamPosition', 'win', 'gameEndedInSurrender',
+    champion_info_columns = ['championId', 'championName', 'teamId', 'teamPosition', 'win', 'gameEndedInSurrender',
                          'kills','deaths','assists',
                          'totalDamageDealtToChampions', 'totalDamageTaken',
                          'doubleKills','tripleKills','quadraKills','pentaKills',
                          'longestTimeSpentLiving', 'largestKillingSpree', 'largestMultiKill',
                          'totalMinionsKilled']
     match_info_columns = ['match_id', 'gameVersion', 'gameCreation', 'gameDuration', 'participants']
-    match_summary_columns = ['match_id','date','duration','patch','side','position','champion','gamelength','result',
+    match_summary_columns = ['match_id','date','gamelength','patch','side','position','champion_id','champion','result',
                              'kills','deaths','assists',
                              'teamkills','teamdeaths',
                              'doublekills','triplekills','quadrakills','pentakills',
                              'damagetochampions', 'damagetaken',
                              'longesttimespentliving', 'largestkillingspree', 'largestmultikill',
-                             'totalcs']
+                             'totalcs','gameendedinsurrender']
 
     ##Get matches parquet files or create empty DataFrames if I will rewrite the data
     if os.path.exists(SOLOQ_MATCHES_SUMMARY_FILE) and rewrite == False:
@@ -212,7 +226,7 @@ def process_soloq_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.Data
                 .assign(
                     patch=lambda x: x['gameVersion'].map(lambda y: '.'.join(y.split('.')[:2])),
                     date=lambda x: pd.to_datetime(x['gameCreation'], unit='ms'),
-                    duration=lambda x: pd.to_timedelta(x['gameDuration'], unit='s')
+                    gamelength=lambda x: pd.to_timedelta(x['gameDuration'], unit='s')
                 )
                 .drop(columns=['gameVersion','gameCreation','gameDuration'])
                 .explode('participants').reset_index(drop=True)
@@ -226,11 +240,11 @@ def process_soloq_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.Data
                             side = lambda x: x['teamId'].map(lambda y: 'Blue' if y == 100 else 'Red')
                         )
                         .drop(columns=['participants','teamId'])
-                        .rename(columns={'championName': 'champion', 'teamPosition': 'position', 'win': 'result',
+                        .rename(columns={'championId': 'champion_id', 'championName': 'champion', 'teamPosition': 'position', 'win': 'result',
                                          'totalDamageDealtToChampions': 'damagetochampions', 'totalDamageTaken': 'damagetaken',
                                          'doubleKills': 'doublekills', 'tripleKills': 'triplekills', 'quadraKills': 'quadrakills', 'pentaKills': 'pentakills',
                                          'longestTimeSpentLiving': 'longesttimespentliving', 'largestKillingSpree': 'largestkillingspree', 'largestMultiKill': 'largestmultikill',
-                                         'totalMinionsKilled': 'totalcs'
+                                         'totalMinionsKilled': 'totalcs', 'gameEndedInSurrender': 'gameendedinsurrender'
                         })
     )
     matches_summary_df = pd.concat([matches_summary_df, champion_info_df], ignore_index=True)
