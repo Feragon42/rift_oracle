@@ -3,6 +3,9 @@ from airflow.providers.standard.operators.python import PythonOperator
 from ingestion.patch_scraping_functions import get_new_patch_notes
 from ingestion.riot_api_functions import get_summoners_data, get_match_id_list, process_match_list
 from ingestion.oe_functions import download_oe_data
+from transformations.patches import upload_patches_dimension, upload_champions_changes_dimension
+from transformations.matches import upload_oe_matches, upload_soloq_matches
+from transformations.champions import update_champions_dimension
 
 with DAG(
     dag_id="orchestrator",
@@ -40,5 +43,31 @@ with DAG(
         python_callable=download_oe_data,
     )
 
-    salutation >> [patch_scraping, summoners_data, download_oe_data_task]
+    update_patches_dimension = PythonOperator(
+        task_id="update_patches_dimension",
+        python_callable=upload_patches_dimension,
+    )
+
+    update_champions_changes_dimension = PythonOperator(
+        task_id="update_champions_changes_dimension",
+        python_callable=upload_champions_changes_dimension,
+    )
+
+    transform_oe_matches = PythonOperator(
+        task_id="transform_oe_matches",
+        python_callable=upload_oe_matches,
+    )
+
+    transform_soloq_matches = PythonOperator(
+        task_id="transform_soloq_matches",
+        python_callable=upload_soloq_matches,
+    )
+
+    update_champions_dimension_task = PythonOperator(
+        task_id="update_champions_dimension",
+        python_callable=update_champions_dimension,
+    )
+
+    salutation >> [patch_scraping, summoners_data, download_oe_data_task] >> [update_patches_dimension] >> update_champions_dimension_task >> [transform_oe_matches, transform_soloq_matches]
     summoners_data >> match_id_list >> process_match_list_task
+    update_patches_dimension >> update_champions_changes_dimension
