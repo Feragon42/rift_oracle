@@ -78,7 +78,7 @@ def process_oe_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
     return ban_list_df
 
 def process_oe_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
-    match_summary_columns = ['date','patch','side','position','playername','champion','gamelength','result','kills','deaths','assists',
+    match_summary_columns = ['gameid','date','patch','side','position','playername','champion','gamelength','result','kills','deaths','assists',
                             'teamkills','teamdeaths','doublekills','triplekills','quadrakills','pentakills','damagetochampions',
                             'dpm','damageshare','damagetakenperminute','damagemitigatedperminute','damagetotowers','total cs',
                             'killsat10','assistsat10','deathsat10','csat10','opp_killsat10','opp_assistsat10','opp_deathsat10','opp_csat10',
