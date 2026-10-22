@@ -3,7 +3,7 @@ import os
 from transformations.utils import PATCHES_DIMENSION_FILE, CHAMPIONS_CHANGES_DIMENSION_FILE, SILVER_DATASETS_DIR, BRONZE_DATASETS_DIR
 
 def upload_patches_dimension(rewrite=False):
-    patches_desc_df = pd.read_csv(BRONZE_DATASETS_DIR / 'patches/scraped_patch_notes.csv')
+    patches_desc_df = pd.read_csv(BRONZE_DATASETS_DIR / 'patches/scraped_patch_notes.csv', dtype={'patch_number': str})
 
     if os.path.exists(PATCHES_DIMENSION_FILE) and rewrite == False:
         patches_dimension = pd.read_parquet(PATCHES_DIMENSION_FILE, engine='pyarrow')
@@ -55,7 +55,7 @@ def upload_champions_changes_dimension(rewrite=False):
             raise ValueError("The patches_dimension.parquet file is empty. Please check the data source.")
 
     #Load existing champions changes dimension DataFrame or create a new one if it doesn't exist (if rewrite is true, it will create a new one nonetheless)
-    if not os.path.exists(CHAMPIONS_CHANGES_DIMENSION_FILE) and rewrite == False:
+    if not os.path.exists(CHAMPIONS_CHANGES_DIMENSION_FILE) or rewrite:
         champions_changes = pd.DataFrame(columns=['patch_number', 'champion_name', 'change_type'])
     else:
         champions_changes = pd.read_parquet(CHAMPIONS_CHANGES_DIMENSION_FILE, engine='pyarrow')
@@ -66,7 +66,7 @@ def upload_champions_changes_dimension(rewrite=False):
         if patch.patch_number not in champions_changes['patch_number'].values:
             source_file = BRONZE_DATASETS_DIR / f'patches/patch_highlights_champion_changes_{patch.patch_number}.csv'
             if os.path.exists(source_file):
-                source_file_data = pd.read_csv(source_file)
+                source_file_data = pd.read_csv(source_file, dtype=str)
                 new_changes = pd.DataFrame({
                     'patch_number': source_file_data['Patch Number'],
                     'champion_name': source_file_data['Champion'],

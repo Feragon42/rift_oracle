@@ -21,7 +21,7 @@ def upload_oe_matches(rewrite=False) -> bool:
         if not os.path.exists(source_file_dir):
             raise ValueError(f"The source file for year {year} does not exist. Please check the data source.")
         else:
-            oe_df = pd.read_csv(source_file_dir)
+            oe_df = pd.read_csv(source_file_dir, dtype={'patch': str}) ##Don't let the patch be interpreted as a float
             oe_df['date'] = pd.to_datetime(oe_df['date'], errors='coerce')
 
             #Filter the DataFrame to only include not processed matches

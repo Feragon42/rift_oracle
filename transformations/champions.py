@@ -9,13 +9,13 @@ def update_champions_dimension():
     # but in the competitive DF OE uses the real full name
     champions_alt_names = {"Khazix": "Kha'Zix",  "KogMaw": "Kog'Maw",  "Velkoz": "Vel'Koz",  
                            "RekSai": "Rek'Sai", "Chogath": "Cho'Gath",   "Kaisa": "Kai'Sa", 
-                           "Belveth": "Bel'Veth",  "KSante": "K'Sante"}
+                           "Belveth": "Bel'Veth",  "KSante": "K'Sante", "MonkeyKing": "Wukong"}
 
     df = (pd.read_parquet(SOLOQ_MATCHES_SUMMARY_FILE)
           .loc[:, ['champion','champion_id']]
           .drop_duplicates(subset=['champion','champion_id'],keep='first')
           .assign(
-              campion_real_name = lambda x: x['champion'].replace(champions_alt_names)
+              champion_real_name = lambda x: x['champion'].replace(champions_alt_names)
           )
     )
 
