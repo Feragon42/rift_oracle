@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from transformations.utils import PATCHES_DIMENSION_FILE, CHAMPIONS_CHANGES_DIMENSION_FILE, SILVER_DATASETS_DIR, BRONZE_DATASETS_DIR
+from transformations.utils import PATCHES_DIMENSION_FILE, CHAMPIONS_CHANGES_DIMENSION_FILE, SILVER_DATASETS_DIR, BRONZE_DATASETS_DIR, GOLD_DATASET_DIR, CHAMPIONS_CHANGES_GOLD, CHAMPIONS_DIMENSION_FILE
 
 def upload_patches_dimension(rewrite=False):
     patches_desc_df = pd.read_csv(BRONZE_DATASETS_DIR / 'patches/scraped_patch_notes.csv', dtype={'patch_number': str})
@@ -110,3 +110,22 @@ def get_patch_dates(patch_number: int | None = None) -> tuple[pd.Timestamp, pd.T
                 last_patch_date = patches['patch_end_date'].max()
 
     return first_patch_date, last_patch_date
+
+def build_champions_changes_gold():
+    if not os.path.exists(CHAMPIONS_CHANGES_DIMENSION_FILE):
+        raise ValueError("The silver champions_changes_dimension.parquet file does not exist. Please check the data source.")
+    else:
+        df = pd.read_parquet(CHAMPIONS_CHANGES_DIMENSION_FILE, engine='pyarrow')
+        if df.empty:
+            raise ValueError("The silver champions_changes_dimension.parquet file is empty. Please check the data source.")
+        else:
+            try:
+                champions_dim = pd.read_parquet(CHAMPIONS_DIMENSION_FILE, engine='pyarrow')
+                champions_changes = (
+                    df.rename(columns={'champion_name': 'champion', "patch_number": "patch"})
+                )
+                champions_changes.to_parquet(CHAMPIONS_CHANGES_GOLD, engine='pyarrow', index=False)
+            except Exception as e:
+                raise ValueError(f"Failed to write the champions changes dimension DataFrame to the gold dataset. Please check the data and try again. Error: {e}")
+
+    return True
