@@ -18,7 +18,9 @@ PRO_MATCHES_SUMMARY_FILE = SILVER_DATASETS_DIR / 'pro_matches_summary.parquet'
 SOLOQ_MATCHES_SUMMARY_FILE = SILVER_DATASETS_DIR / 'soloq_matches_summary.parquet'
 PRO_MATCHES_BAN_LIST_FILE = SILVER_DATASETS_DIR / 'pro_matches_ban_list.parquet'
 SOLOQ_MATCHES_BAN_LIST_FILE = SILVER_DATASETS_DIR / 'soloq_matches_ban_list.parquet'
+PATCH_MATCHES_SUMMARY_FILE = GOLD_DATASET_DIR / 'patch_matches_summary.parquet'
 
 ##Champions
 CHAMPIONS_DIMENSION_FILE = SILVER_DATASETS_DIR / 'champions_dimension.parquet'
 CHAMPIONS_PICK_STATS_FILE = GOLD_DATASET_DIR / 'champions_pick_stats.parquet'
+PATCH_TOP_PICK_RATE_FILE = GOLD_DATASET_DIR / 'patch_top_pick_rate.parquet'

@@ -4,7 +4,9 @@ import re
 from datetime import datetime
 from metadata import metadata
 from transformations.patches import get_patch_dates
-from transformations.utils import BRONZE_DATASETS_DIR, PRO_MATCHES_SUMMARY_FILE, SOLOQ_MATCHES_SUMMARY_FILE, PRO_MATCHES_BAN_LIST_FILE, SOLOQ_MATCHES_BAN_LIST_FILE, CHAMPIONS_DIMENSION_FILE
+from transformations.utils import BRONZE_DATASETS_DIR, PRO_MATCHES_SUMMARY_FILE, SOLOQ_MATCHES_SUMMARY_FILE,\
+        PRO_MATCHES_BAN_LIST_FILE, SOLOQ_MATCHES_BAN_LIST_FILE, CHAMPIONS_DIMENSION_FILE,\
+        PATCH_MATCHES_SUMMARY_FILE, PATCH_TOP_PICK_RATE_FILE
 
 def normalize_patch(patch):
     #Corrects the 2025+ patch naming (1X.Y -> 2X.Y) and removes the leading zero of the minor version. Null values are preserved.
@@ -112,7 +114,8 @@ def process_oe_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.DataFra
             base_df.loc[:, match_summary_columns]
             .assign(
                 date=lambda x: pd.to_datetime(x['date']),
-                patch=lambda x: x['patch'].map(normalize_patch)
+                patch=lambda x: x['patch'].map(normalize_patch),
+                gamelength=lambda x: x['gamelength'] * 1000000 #Transform gamelength to microseconds to match soloq
             )
             .rename(columns={'total cs': 'total_cs'})
             .copy()
@@ -277,21 +280,77 @@ def process_soloq_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.Data
 
     return matches_summary_df
 
+def build_patch_matches_summary_gold():
+    #validate silver sources
+    if not os.path.exists(SOLOQ_MATCHES_SUMMARY_FILE) or not os.path.exists(PRO_MATCHES_SUMMARY_FILE):
+        raise FileNotFoundError("One or more required silver source files are missing.")
 
-# def get_last_match_date(type: str) -> pd.Timestamp | None: ##Replaced by metadata
-#     if type == 'pro':
-#         file_path = PRO_MATCHES_SUMMARY_FILE
-#     elif type == 'soloq':
-#         file_path = SOLOQ_MATCHES_SUMMARY_FILE
-#     else:
-#         raise ValueError(f"Unknown match type: {type}")
+    soloq_base = pd.read_parquet(SOLOQ_MATCHES_SUMMARY_FILE, engine='pyarrow')
+    pro_base = pd.read_parquet(PRO_MATCHES_SUMMARY_FILE, engine='pyarrow')
+    top_pick_rate_df = pd.read_parquet(PATCH_TOP_PICK_RATE_FILE, engine='pyarrow')
 
-#     if not os.path.exists(file_path):
-#         return None
-#     else:
-#         matches = pd.read_parquet(file_path, engine='pyarrow')
-#         if matches.empty:
-#             return None
-#         else:
-#             last_match_date = matches['date'].max()
-#             return last_match_date
+    if soloq_base.empty or pro_base.empty or top_pick_rate_df.empty:
+        raise ValueError("One or more silver source files are empty.")
+
+    #Build patch matches summary per queue
+    
+    soloq_patch_summary = (
+        soloq_base
+        .groupby('patch')
+        .agg(
+            matches=('match_id', 'nunique'),
+            # players=('playername', 'nunique'),
+            champions=('champion', 'nunique'),
+            avg_gamelength=('gamelength', 'mean'),
+            avg_player_kills=('kills', 'mean'),
+            avg_player_deaths=('deaths', 'mean'),
+            avg_player_assists=('assists', 'mean')
+        )
+        .assign(
+            match_type='soloq'
+        )
+        .reset_index()
+        .merge(top_pick_rate_df, on='patch', how='left')
+        .rename(columns={'soloq_top_pick_champion': 'top_pick_champion', 
+                         'soloq_top_pick_rate': 'top_pick_rate', 
+                         'soloq_top_pick_amt': 'top_pick_amt',
+                         'soloq_top_ban_champion': 'top_ban_champion',
+                         'soloq_top_ban_rate': 'top_ban_rate',
+                         'soloq_top_ban_amt': 'top_ban_amt'})
+        .drop(columns=['pro_top_pick_rate', 'pro_top_pick_champion', 'pro_top_pick_amt', 'pro_top_ban_champion', 'pro_top_ban_rate', 'pro_top_ban_amt'], errors='ignore')
+        .pipe(lambda x: x[['patch', 'match_type', *x.columns.difference(['patch', 'match_type'])]])
+    )
+
+    pro_patch_summary = (
+        pro_base
+        .groupby('patch')
+        .agg(
+            matches=('gameid', 'nunique'),
+            players=('playername', 'nunique'),
+            champions=('champion', 'nunique'),
+            avg_gamelength=('gamelength', 'mean'),
+            avg_player_kills=('kills', 'mean'),
+            avg_player_deaths=('deaths', 'mean'),
+            avg_player_assists=('assists', 'mean')
+        )
+        .assign(
+            match_type='pro'
+        )
+        .reset_index()
+        .merge(top_pick_rate_df, on='patch', how='left')
+        .rename(columns={'pro_top_pick_champion': 'top_pick_champion', 
+                         'pro_top_pick_rate': 'top_pick_rate', 
+                         'pro_top_pick_amt': 'top_pick_amt',
+                         'pro_top_ban_champion': 'top_ban_champion',
+                         'pro_top_ban_rate': 'top_ban_rate',
+                         'pro_top_ban_amt': 'top_ban_amt'})
+        .drop(columns=['soloq_top_pick_rate', 'soloq_top_pick_champion', 'soloq_top_pick_amt', 'soloq_top_ban_champion', 'soloq_top_ban_rate', 'soloq_top_ban_amt'], errors='ignore')
+        .pipe(lambda x: x[['patch', 'match_type', *x.columns.difference(['patch', 'match_type'])]])
+    )
+
+    patch_matches_summary = pd.concat([soloq_patch_summary, pro_patch_summary], ignore_index=True)
+
+    try:
+        patch_matches_summary.to_parquet(PATCH_MATCHES_SUMMARY_FILE, engine='pyarrow', index=False)
+    except Exception as e:
+        raise IOError(f"Failed to write patch matches summary to file: {e}")

@@ -2,7 +2,7 @@ import pandas as pd
 import os
 from transformations.utils import CHAMPIONS_DIMENSION_FILE, \
     SOLOQ_MATCHES_SUMMARY_FILE, PRO_MATCHES_SUMMARY_FILE, PRO_MATCHES_BAN_LIST_FILE, SOLOQ_MATCHES_BAN_LIST_FILE, \
-    CHAMPIONS_PICK_STATS_FILE, CHAMPIONS_DIMENSION_FILE, CHAMPIONS_CHANGES_GOLD
+    CHAMPIONS_PICK_STATS_FILE, CHAMPIONS_DIMENSION_FILE, CHAMPIONS_CHANGES_GOLD, PATCH_TOP_PICK_RATE_FILE
 
 def update_champions_dimension():
     #Instead of using DDragon, I can create my own champions dimension from the matches data
@@ -108,7 +108,7 @@ def build_ban_list_gold():
     stats_columns = ['pro_pick_rate', 'pro_pick_amt', 'pro_ban_rate', 'pro_ban_amt', 
                      'soloq_pick_rate', 'soloq_pick_amt', 'soloq_ban_rate', 'soloq_ban_amt']
 
-    patch_champion_base = pd.read_parquet(CHAMPIONS_CHANGES_GOLD)[['patch', 'champion']]
+    patch_champion_base = pd.read_parquet(CHAMPIONS_CHANGES_GOLD)
 
     consolidated_pick_stats_df = (
         patch_champion_base
@@ -116,7 +116,7 @@ def build_ban_list_gold():
         .merge(pro_ban_rate_df, on=['patch', 'champion'], how='outer')
         .merge(soloq_pick_rate_df, on=['patch', 'champion'], how='outer')
         .merge(soloq_ban_rate_df, on=['patch', 'champion'], how='outer')
-        .fillna({col: 0 for col in stats_columns})
+        .fillna({**{col: 0 for col in stats_columns}, 'change_type': 'None'})
         .pipe(lambda x: x[['patch', 'champion', *x.columns.difference(['patch', 'champion'], sort=False)]])
     )
 
@@ -124,3 +124,65 @@ def build_ban_list_gold():
         consolidated_pick_stats_df.to_parquet(CHAMPIONS_PICK_STATS_FILE, engine='pyarrow', index=False)
     except Exception as e:
         print(f"Error saving consolidated pick stats: {e}")
+
+def build_patch_top_pick_rate():
+    #Validate gold source file
+    if not os.path.exists(CHAMPIONS_PICK_STATS_FILE):
+        raise FileNotFoundError("Champions pick stats file is missing.")
+
+    champions_picks_stats = pd.read_parquet(CHAMPIONS_PICK_STATS_FILE, engine='pyarrow')
+    if champions_picks_stats.empty:
+        raise ValueError("Champions pick stats file is empty.")
+
+    pro_pick_columns = ['pro_pick_rate', 'pro_pick_amt']
+    pro_ban_columns = ['pro_ban_rate', 'pro_ban_amt']
+    soloq_pick_columns = ['soloq_pick_rate', 'soloq_pick_amt']
+    soloq_ban_columns = ['soloq_ban_rate', 'soloq_ban_amt']
+
+    patch_top_pick_rate_soloq = (
+        champions_picks_stats
+        .loc[lambda x: x['soloq_pick_rate'] > 0]
+        .loc[lambda x: x.groupby('patch')['soloq_pick_rate'].idxmax()]
+        .rename(columns={"soloq_pick_rate": "soloq_top_pick_rate", "champion": "soloq_top_pick_champion", "soloq_pick_amt": "soloq_top_pick_amt"})
+        .drop(soloq_ban_columns+pro_ban_columns+pro_pick_columns, axis=1)
+        .reset_index(drop=True)
+    )
+
+    patch_top_ban_rate_soloq = (
+        champions_picks_stats
+        .loc[lambda x: x['soloq_ban_rate'] > 0]
+        .loc[lambda x: x.groupby('patch')['soloq_ban_rate'].idxmax()]
+        .rename(columns={"soloq_ban_rate": "soloq_top_ban_rate", "champion": "soloq_top_ban_champion", "soloq_ban_amt": "soloq_top_ban_amt"})
+        .drop(soloq_pick_columns+pro_ban_columns+pro_pick_columns, axis=1)
+        .reset_index(drop=True)
+    )
+
+    patch_top_pick_rate_pro = (
+        champions_picks_stats
+        .loc[lambda x: x['pro_pick_rate'] > 0]
+        .loc[lambda x: x.groupby('patch')['pro_pick_rate'].idxmax()]
+        .rename(columns={"pro_pick_rate": "pro_top_pick_rate", "champion": "pro_top_pick_champion", "pro_pick_amt": "pro_top_pick_amt"})
+        .drop(soloq_ban_columns+pro_ban_columns+soloq_pick_columns, axis=1)
+        .reset_index(drop=True)
+    )
+
+    patch_top_ban_rate_pro = (
+        champions_picks_stats
+        .loc[lambda x: x['pro_ban_rate'] > 0]
+        .loc[lambda x: x.groupby('patch')['pro_ban_rate'].idxmax()]
+        .rename(columns={"pro_ban_rate": "pro_top_ban_rate", "champion": "pro_top_ban_champion", "pro_ban_amt": "pro_top_ban_amt"})
+        .drop(soloq_ban_columns+pro_pick_columns+soloq_pick_columns, axis=1)
+        .reset_index(drop=True)
+    )
+
+    patch_top_pick_rate_df = (
+        patch_top_pick_rate_soloq
+        .merge(patch_top_ban_rate_soloq, on='patch', how='outer')
+        .merge(patch_top_pick_rate_pro, on='patch', how='outer')
+        .merge(patch_top_ban_rate_pro, on='patch', how='outer')
+    )
+
+    try:
+        patch_top_pick_rate_df.to_parquet(PATCH_TOP_PICK_RATE_FILE, engine='pyarrow', index=False)
+    except Exception as e:
+        print(f"Error saving patch top pick rate: {e}")

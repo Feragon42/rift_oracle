@@ -1,8 +1,8 @@
 # Rift Oracle
-A Data Engineering portfolio project focused on predicting champion pick and ban trends across League of Legends patches.
+A Data Engineering portfolio project focused on predicting which champions will receive a buff or nerf in the next League of Legends patches.
 
 ## Goal
-The goal of this project is to build a data platform capable of predicting champion *pick* and *ban* trends for future League of Legends patches.
+The goal of this project is to build a data platform capable of predicting which League of Legends champions are likely to receive *buffs* or *nerfs* in future patches.
 
 ## DataSources
 The initial data sources for this project are: 
@@ -15,7 +15,7 @@ The initial data sources for this project are:
 - [x] Build the ingestion pipelines
 - [x] Create the Bronze layer
 - [x] Build Silver transformations
-- [ ] Design Gold analytics tables
+- [x] Design Gold analytics tables
 - [ ] Engineer predictive features
 - [ ] Train the first prediction model
 - [ ] Evaluate model performance
@@ -95,3 +95,29 @@ To avoid redundant requests, pipeline metadata is stored in a SQLite database. T
 * Begin experimenting with scikit-learn to evaluate the first predictive approaches.
 
 In this iteration, I completed the Silver layer by developing the transformation functions required to convert the raw match data into clean, structured Parquet datasets for match and ban history.
+
+---
+
+### Fourth Entry (2026-10-24)
+
+**TL;DR:**
+
+I identified and resolved standardization issues in champion names and patch versions across datasets. I also created three tables in the Gold layer to analyze match statistics and champion pick/ban rates across patches.
+
+#### Findings
+
+* During the Silver layer exploration, I identified inconsistencies in champion naming conventions between datasets. For example, Kha'Zix appears as `Kha'Zix` in the professional matches dataset but as `Khazix` in Solo Queue data. Similarly, Wukong is referred to as `Monkey King` in some datasets. To address these inconsistencies, I added the different name variations to the corresponding dimension tables to ensure consistent champion identification across data sources.
+
+* Patch versioning also presented standardization challenges. The major version component uses different formats across datasets, such as `15`, `2025`, and `25`, while the minor version may include a leading zero. I addressed these inconsistencies by standardizing patch versions across the datasets.
+
+* I decided to create three tables in the Gold layer:
+
+  * **`champions_pick_stats`:** Contains each champion's pick and ban counts and rates per patch, distinguishing between professional matches and Solo Queue. It also includes flags indicating whether a champion received a buff or a nerf in that patch.
+
+  * **`patch_matches_summary`:** Provides a summary of professional and Solo Queue match statistics per patch, including the most-picked and most-banned champion.
+
+  * **`patch_top_pick_rate`:** An auxiliary table containing the top-ranked champions by pick and ban rates for each patch.
+
+#### Next Steps
+
+* Explore how to develop a machine learning model to predict which champions are likely to receive buffs or nerfs in upcoming patches.
