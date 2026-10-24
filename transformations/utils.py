@@ -9,6 +9,9 @@ GOLD_DATASET_DIR = PROJECT_ROOT / 'datasets' / 'gold'
 PATCHES_DIMENSION_FILE = SILVER_DATASETS_DIR / 'patches_dimension.parquet'
 CHAMPIONS_CHANGES_DIMENSION_FILE = SILVER_DATASETS_DIR / 'champions_changes_dimension.parquet'
 CHAMPIONS_CHANGES_GOLD = GOLD_DATASET_DIR / 'champions_changes_dimension.parquet'
+alternative_patch_numbers_change = {'2025':'25', '25.S1.1': '25.1', '25.S1.2' : '25.2', '25.03': '25.3', 
+                                    '25.04': '25.4', '25.05': '25.5','25.06': '25.6', '25.07': '25.7', 
+                                    '25.08': '25.8', '25.09': '25.9'}
 
 ## Matches
 PRO_MATCHES_SUMMARY_FILE = SILVER_DATASETS_DIR / 'pro_matches_summary.parquet'

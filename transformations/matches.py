@@ -1,9 +1,19 @@
 import pandas as pd
 import os
+import re
 from datetime import datetime
 from metadata import metadata
 from transformations.patches import get_patch_dates
 from transformations.utils import BRONZE_DATASETS_DIR, PRO_MATCHES_SUMMARY_FILE, SOLOQ_MATCHES_SUMMARY_FILE, PRO_MATCHES_BAN_LIST_FILE, SOLOQ_MATCHES_BAN_LIST_FILE, CHAMPIONS_DIMENSION_FILE
+
+def normalize_patch(patch):
+    #Corrects the 2025+ patch naming (1X.Y -> 2X.Y) and removes the leading zero of the minor version. Null values are preserved.
+    if not isinstance(patch, str) or patch.strip().lower() in ('', 'nan', 'none'):
+        return None
+    major = patch.split('.')[0]
+    if major.isdigit() and int(major) >= 15:
+        patch = re.sub(r'^1(\d\.\d+)$', r'2\1', patch)
+    return patch.replace('.0', '.')
 
 def upload_oe_matches(rewrite=False) -> bool:
     ##Get first and last patch dates from the patches dimension
@@ -69,6 +79,10 @@ def process_oe_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame:
                 var_name='ban_number',
                 value_name='ban'
             )
+            .assign(
+                date=lambda x: pd.to_datetime(x['date']),
+                patch=lambda x: x['patch'].map(normalize_patch)
+            )
             .drop(columns=['ban_number'])
             .dropna(subset=['date', 'gameid', 'ban'])
             .drop_duplicates(subset=['date','gameid','side','ban'], keep='first')
@@ -92,11 +106,20 @@ def process_oe_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.DataFra
     else:
         matches_summary_df = pd.DataFrame(columns=match_summary_columns)
 
-    matches_summary_df = pd.concat([matches_summary_df, 
-                                    base_df.loc[:, match_summary_columns]
-                                    .rename(columns={'total cs': 'total_cs'}).copy()
-                                    .dropna(subset=['date','champion'])], 
-                                    ignore_index=True)
+    matches_summary_df = pd.concat(
+        [
+            matches_summary_df,
+            base_df.loc[:, match_summary_columns]
+            .assign(
+                date=lambda x: pd.to_datetime(x['date']),
+                patch=lambda x: x['patch'].map(normalize_patch)
+            )
+            .rename(columns={'total cs': 'total_cs'})
+            .copy()
+            .dropna(subset=['date', 'champion'])
+        ],
+        ignore_index=True,
+    )
     return matches_summary_df
 
 def upload_soloq_matches(rewrite=False) -> bool:
@@ -166,7 +189,7 @@ def process_soloq_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame
                     date=lambda x: pd.to_datetime(x['gameStartTimestamp'], unit='ms'),
                     patch=lambda x: x['gameVersion'].map(
                         lambda y: '.'.join(str(y).split('.')[:2]) if isinstance(y, str) else None
-                    ),
+                    ).map(normalize_patch),
                     gameid=lambda x: x['match_id'],
                     side=lambda x: x['teams'].map(
                         lambda y: 'Blue' if isinstance(y, dict) and y.get('teamId') == 100 else 'Red' if isinstance(y, dict) else None
@@ -190,11 +213,13 @@ def process_soloq_ban_list(base_df: pd.DataFrame, rewrite=False) -> pd.DataFrame
             value_vars=[f'ban{i+1}' for i in range(0,5)],
             var_name='ban_number',
             value_name='ban'
-        ).drop(columns=['ban_number']).dropna(subset=['ban'])
+        )
+        .drop(columns=['ban_number']).dropna(subset=['ban'])
+        .astype({'ban': 'int'})
     )
 
-    ban_list_melted = (ban_melted.merge(champions_dimension, how='left', left_on='ban', right_on='championId')
-        .drop(columns=['championId', 'ban']).rename(columns={'championName': 'ban'}).dropna(subset=['ban']))
+    ban_list_melted = (ban_melted.merge(champions_dimension, how='left', left_on='ban', right_on='champion_id')
+        .drop(columns=['champion_id', 'champion', 'ban']).rename(columns={'champion_real_name': 'ban'}).dropna(subset=['ban']))
     ban_list_df = pd.concat([ban_list_df, ban_list_melted], ignore_index=True)
     
     return ban_list_df
@@ -224,7 +249,8 @@ def process_soloq_match_summary(base_df: pd.DataFrame, rewrite=False) -> pd.Data
 
     match_df = (base_df.loc[base_df['endOfGameResult'] == 'GameComplete', match_info_columns]
                 .assign(
-                    patch=lambda x: x['gameVersion'].map(lambda y: '.'.join(y.split('.')[:2])),
+                    patch=lambda x: x['gameVersion'].map(lambda y: '.'.join(y.split('.')[:2]) if isinstance(y, str) else None)
+                    .map(normalize_patch),
                     date=lambda x: pd.to_datetime(x['gameCreation'], unit='ms'),
                     gamelength=lambda x: pd.to_timedelta(x['gameDuration'], unit='s')
                 )

@@ -1,6 +1,8 @@
 import pandas as pd
 import os
-from transformations.utils import PATCHES_DIMENSION_FILE, CHAMPIONS_CHANGES_DIMENSION_FILE, SILVER_DATASETS_DIR, BRONZE_DATASETS_DIR, GOLD_DATASET_DIR, CHAMPIONS_CHANGES_GOLD, CHAMPIONS_DIMENSION_FILE
+from transformations.utils import PATCHES_DIMENSION_FILE, CHAMPIONS_CHANGES_DIMENSION_FILE, SILVER_DATASETS_DIR, \
+                                  BRONZE_DATASETS_DIR, GOLD_DATASET_DIR, CHAMPIONS_CHANGES_GOLD, CHAMPIONS_DIMENSION_FILE, \
+                                  alternative_patch_numbers_change
 
 def upload_patches_dimension(rewrite=False):
     patches_desc_df = pd.read_csv(BRONZE_DATASETS_DIR / 'patches/scraped_patch_notes.csv', dtype={'patch_number': str})
@@ -28,8 +30,11 @@ def upload_patches_dimension(rewrite=False):
     # Add the new patches to the patches dimension DataFrame (If rewrite it will add all patches from the source)
     for patch in patches_desc_df.itertuples():
         if patch.patch_number not in patches_dimension['patch_number'].values:
+            correct_patch_number = alternative_patch_numbers_change.get(patch.patch_number, patch.patch_number) #Fix the broken 2025 patch naming
+
             new_patch = pd.DataFrame({
                 'patch_number': [patch.patch_number],
+                'patch_number_corrected': [correct_patch_number],
                 'patch_start_date': [patch.patch_start_date],
                 'patch_end_date': [patch.patch_end_date],
                 'patch_url': [patch.patch_url]
@@ -67,8 +72,9 @@ def upload_champions_changes_dimension(rewrite=False):
             source_file = BRONZE_DATASETS_DIR / f'patches/patch_highlights_champion_changes_{patch.patch_number}.csv'
             if os.path.exists(source_file):
                 source_file_data = pd.read_csv(source_file, dtype=str)
+                
                 new_changes = pd.DataFrame({
-                    'patch_number': source_file_data['Patch Number'],
+                    'patch_number': patch.patch_number_corrected,
                     'champion_name': source_file_data['Champion'],
                     'change_type': source_file_data['Change Type']
                 })
