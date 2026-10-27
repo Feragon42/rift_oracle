@@ -27,3 +27,4 @@ PATCH_TOP_PICK_RATE_FILE = GOLD_DATASET_DIR / 'patch_top_pick_rate.parquet'
 
 ##Analytics
 CHAMPIONS_CHANGES_ANALYTICS_FILE = GOLD_DATASET_DIR / 'champions_changes_analytics.parquet'
+MODEL_FILE = GOLD_DATASET_DIR / 'model.pkl'
