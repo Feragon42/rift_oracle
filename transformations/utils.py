@@ -24,3 +24,6 @@ PATCH_MATCHES_SUMMARY_FILE = GOLD_DATASET_DIR / 'patch_matches_summary.parquet'
 CHAMPIONS_DIMENSION_FILE = SILVER_DATASETS_DIR / 'champions_dimension.parquet'
 CHAMPIONS_PICK_STATS_FILE = GOLD_DATASET_DIR / 'champions_pick_stats.parquet'
 PATCH_TOP_PICK_RATE_FILE = GOLD_DATASET_DIR / 'patch_top_pick_rate.parquet'
+
+##Analytics
+CHAMPIONS_CHANGES_ANALYTICS_FILE = GOLD_DATASET_DIR / 'champions_changes_analytics.parquet'
